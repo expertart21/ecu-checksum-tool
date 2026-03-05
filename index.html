@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECU Checksum Tool — Cummins / Bosch</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+  .header { text-align: center; padding: 20px 0 28px; border-bottom: 1px solid #2a2d3a; margin-bottom: 22px; }
+  .header h1 { font-size: 22px; color: #fff; font-weight: 600; }
+  .header p { color: #888; font-size: 12px; margin-top: 5px; }
+  .badge { display: inline-block; background: #e84c14; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 18px; max-width: 1400px; margin: 0 auto; }
+  .panel { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 16px; }
+  .panel + .panel { margin-top: 14px; }
+  .panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #666; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2d3a; }
+
+  .drop-zone { border: 2px dashed #2a2d3a; border-radius: 6px; padding: 18px 12px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 6px; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #e84c14; background: rgba(232,76,20,0.04); }
+  .drop-zone.stock-zone:hover, .drop-zone.stock-zone.drag-over { border-color: #7ec8e3; background: rgba(126,200,227,0.04); }
+  .drop-zone .dz-icon { font-size: 24px; margin-bottom: 4px; }
+  .drop-zone .dz-label { font-size: 12px; }
+  .drop-zone .dz-sub { font-size: 10px; color: #444; margin-top: 2px; }
+
+  .file-info { background: #12151e; border: 1px solid #2a2d3a; border-radius: 5px; padding: 8px 10px; font-size: 11px; margin-bottom: 8px; display: none; }
+  .file-info .fi-tag { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .file-info .fi-name { color: #fff; font-weight: 500; word-break: break-all; }
+  .file-info .fi-meta { color: #555; margin-top: 1px; }
+
+  label { display: block; font-size: 11px; color: #777; margin-bottom: 3px; margin-top: 10px; }
+  select, input[type="text"] { width: 100%; background: #12151e; border: 1px solid #2a2d3a; color: #e0e0e0; padding: 7px 9px; border-radius: 5px; font-size: 12px; outline: none; font-family: inherit; }
+  select:focus, input:focus { border-color: #e84c14; }
+  .hint { font-size: 10px; color: #444; margin-top: 2px; }
+  .sep { border: none; border-top: 1px solid #2a2d3a; margin: 12px 0; }
+
+  .btn { width: 100%; padding: 9px; border: none; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-primary { background: #e84c14; color: #fff; }
+  .btn-blue { background: #1a4a6a; color: #7ec8e3; border: 1px solid #2a5a7a; }
+  .btn-green { background: #1a3a1a; color: #4caf82; border: 1px solid #2a6a3a; }
+  .btn-secondary { background: #2a2d3a; color: #aaa; }
+  .btn-save { background: #1a6e3c; color: #fff; display: none; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+  .result-card { background: #12151e; border: 1px solid #2a2d3a; border-radius: 6px; padding: 12px; }
+  .r-label { font-size: 10px; color: #555; margin-bottom: 3px; }
+  .r-value { font-family: 'Consolas', monospace; font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+  .r-detail { font-size: 10px; color: #444; margin-top: 3px; }
+
+  .status-badge { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .s-ok { background: rgba(26,110,60,0.3); color: #4caf82; border: 1px solid #1a6e3c; }
+  .s-err { background: rgba(180,40,20,0.3); color: #f44336; border: 1px solid #b42814; }
+  .s-na { background: rgba(42,45,58,0.5); color: #555; border: 1px solid #2a2d3a; }
+
+  .tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid #2a2d3a; }
+  .tab { padding: 7px 14px; font-size: 11px; color: #555; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab:hover { color: #aaa; }
+  .tab.active { color: #e84c14; border-bottom-color: #e84c14; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .hex-viewer { font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.8; overflow-x: auto; max-height: 320px; overflow-y: auto; background: #0d0f18; border-radius: 5px; padding: 10px; }
+  .hex-row { display: flex; gap: 4px; white-space: nowrap; }
+  .hex-addr { color: #444; min-width: 70px; }
+  .hex-bytes { color: #7ec8e3; flex: 1; }
+  .hex-ascii { color: #666; min-width: 120px; }
+  .hex-bytes .hl { color: #ff6b35; font-weight: bold; background: rgba(255,107,53,0.15); }
+  .hex-bytes .hl2 { color: #4caf82; font-weight: bold; background: rgba(76,175,130,0.15); }
+  .hex-bytes .hl3 { color: #ffc107; font-weight: bold; background: rgba(255,193,7,0.15); }
+
+  .log { font-family: 'Consolas', monospace; font-size: 11px; background: #0d0f18; border-radius: 5px; padding: 10px; max-height: 220px; overflow-y: auto; line-height: 1.7; }
+  .li { color: #7ec8e3; } .lo { color: #4caf82; } .lw { color: #ff9800; } .le { color: #f44336; }
+
+  .scan-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .scan-table th { background: #12151e; color: #555; padding: 6px 8px; text-align: left; border-bottom: 1px solid #2a2d3a; font-weight: 500; }
+  .scan-table td { padding: 5px 8px; border-bottom: 1px solid #1a1d27; font-family: 'Consolas', monospace; }
+  .scan-table tr:hover td { background: #1e2130; cursor: pointer; }
+  .c-ok { color: #4caf82; } .c-warn { color: #ff9800; } .c-blue { color: #7ec8e3; }
+
+  .diff-info { background: #12151e; border: 1px solid #2a3a4a; border-radius: 5px; padding: 10px 12px; font-size: 11px; margin-bottom: 10px; display: none; }
+  .diff-info .di-title { color: #7ec8e3; font-weight: 600; margin-bottom: 5px; }
+  .diff-info .di-row { display: flex; justify-content: space-between; color: #666; margin-top: 2px; }
+  .diff-info .di-val { color: #aaa; }
+
+  .progress-bar { height: 3px; background: #2a2d3a; border-radius: 2px; margin: 8px 0; overflow: hidden; }
+  .progress-bar-inner { height: 100%; background: #e84c14; width: 0%; transition: width 0.1s; }
+
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ECU Checksum Tool <span class="badge">v2.8</span></h1>
+  <p>Расчёт и исправление контрольных сумм прошивок ЭБУ Cummins / Bosch (.bin)</p>
+</div>
+
+<div class="layout">
+<div>
+
+  <!-- FILES PANEL -->
+  <div class="panel">
+    <div class="panel-title">Файлы прошивок</div>
+
+    <!-- STOCK -->
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+        <span style="background:#1a3060;color:#7ec8e3;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700">ШАГ 1</span>
+        <span style="font-size:11px;color:#7ec8e3">Сток-файл (оригинал)</span>
+      </div>
+      <div class="drop-zone stock-zone" id="dzStock"
+        onclick="document.getElementById('fiStock').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="event.preventDefault();this.classList.remove('drag-over');loadStock(event.dataTransfer.files[0])">
+        <div class="dz-icon">📋</div>
+        <div class="dz-label" style="color:#7ec8e3">Загрузить сток .bin</div>
+        <div class="dz-sub">Оригинальный файл с рабочей КС</div>
+      </div>
+      <input type="file" id="fiStock" accept=".bin,.rom" style="display:none">
+      <div class="file-info" id="fiStockInfo">
+        <div class="fi-tag" style="color:#7ec8e3">СТОК</div>
+        <div class="fi-name" id="fiStockName"></div>
+        <div class="fi-meta" id="fiStockMeta"></div>
+      </div>
+    </div>
+
+    <!-- MODIFIED -->
+    <div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+        <span style="background:#3a1a1a;color:#ff6b35;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700">ШАГ 2</span>
+        <span style="font-size:11px;color:#ff6b35">Изменённый файл</span>
+      </div>
+      <div class="drop-zone" id="dzMod"
+        onclick="document.getElementById('fiMod').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="event.preventDefault();this.classList.remove('drag-over');loadMod(event.dataTransfer.files[0])">
+        <div class="dz-icon">📂</div>
+        <div class="dz-label">Загрузить изменённый .bin</div>
+        <div class="dz-sub">Файл после редактирования карт</div>
+      </div>
+      <input type="file" id="fiMod" accept=".bin,.rom" style="display:none">
+      <div class="file-info" id="fiModInfo">
+        <div class="fi-tag" style="color:#ff6b35">ИЗМЕНЁННЫЙ</div>
+        <div class="fi-name" id="fiModName"></div>
+        <div class="fi-meta" id="fiModMeta"></div>
+      </div>
+    </div>
+
+    <!-- DIFF INFO -->
+    <div class="diff-info" id="diffInfo">
+      <div class="di-title">📊 Сравнение файлов</div>
+      <div class="di-row"><span>Отличий байт:</span><span class="di-val" id="diDiffBytes">—</span></div>
+      <div class="di-row"><span>Отличий регионов:</span><span class="di-val" id="diDiffRegions">—</span></div>
+      <div class="di-row"><span>Размеры совпадают:</span><span class="di-val" id="diSizeMatch">—</span></div>
+    </div>
+
+    <!-- ACTIONS -->
+    <hr class="sep">
+    <button class="btn btn-blue" id="btnDiff" onclick="diffAnalysis()" disabled>🔎 Найти КС через сравнение файлов</button>
+    <div class="hint" style="margin-top:4px">Самый точный метод — сравнивает сток и изменённый файл</div>
+
+    <button class="btn btn-green" id="btnStockScan" onclick="stockScan()" disabled>🔍 Авто-поиск в стоке (расширенный)</button>
+    <div class="hint" style="margin-top:4px">Перебирает весь файл, все алгоритмы и диапазоны</div>
+
+    <button class="btn" id="btnDescScan" onclick="scanDescriptorTable()" disabled style="background:#2a1a4a;color:#b07ef8;border:1px solid #4a2a7a;margin-top:8px">🧩 Поиск дескриптора КС (Bosch/Tricore)</button>
+    <div class="hint" style="margin-top:4px">Как Kess/Autotuner: ищет встроенную таблицу блоков КС</div>
+
+    <div class="progress-bar" id="progressBar" style="display:none"><div class="progress-bar-inner" id="progressInner"></div></div>
+
+    <hr class="sep">
+    <button class="btn btn-primary" id="btnCalc" onclick="calculate()" disabled>▶ Рассчитать КС вручную</button>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btnFix" onclick="fixChecksum()" disabled>✏️ Исправить КС</button>
+      <button class="btn btn-secondary" id="btnScanMan" onclick="manualScan()" disabled>🔍 Поиск в файле</button>
+    </div>
+    <button class="btn btn-save" id="btnSave" onclick="saveFile()">💾 Сохранить исправленный файл</button>
+  </div>
+
+  <!-- CONFIG PANEL -->
+  <div class="panel">
+    <div class="panel-title">Параметры КС (авто или вручную)</div>
+
+    <label>Модель ЭБУ</label>
+    <select id="ecuModel" onchange="applyPreset()">
+      <option value="manual">— Ручной режим —</option>
+      <optgroup label="Cummins">
+        <option value="cm871_isx">CM871 — ISX/QSX</option>
+        <option value="cm2350a">CM2350A — ISX15/X15</option>
+        <option value="cm2350b">CM2350B — ISB6.7</option>
+        <option value="cm2150">CM2150 — ISB6.7/ISL</option>
+        <option value="cm2220c">CM2220C — ISC/ISL</option>
+        <option value="cm2250">CM2250 — ISX11.9</option>
+      </optgroup>
+      <optgroup label="Bosch EDC17">
+        <option value="edc17cv44">EDC17CV44 — Cummins ISB4.5/ISF</option>
+        <option value="edc17cp52">EDC17CP52 — DAF/MAN/Paccar</option>
+        <option value="edc17c64">EDC17C64 — Volvo/Renault</option>
+        <option value="edc17_generic">EDC17 — Универсальный</option>
+      </optgroup>
+      <optgroup label="Bosch EDC16 / EDC7">
+        <option value="edc16cp31">EDC16CP31 — ISB/ISC</option>
+        <option value="edc7uc31">EDC7UC31 — ISBe/ISCe</option>
+      </optgroup>
+    </select>
+
+    <label>Алгоритм</label>
+    <select id="algorithm">
+      <option value="sum32_le">SUM32 LE (4 байта, Little-Endian)</option>
+      <option value="sum32_be">SUM32 BE (4 байта, Big-Endian)</option>
+      <option value="neg_sum32_le">NEG SUM32 LE (сумма+КС=0)</option>
+      <option value="neg_sum32_be">NEG SUM32 BE</option>
+      <option value="sum16_le">SUM16 LE (2 байта)</option>
+      <option value="sum16_be">SUM16 BE (2 байта)</option>
+      <option value="sum8">SUM8 (1 байт)</option>
+      <option value="neg_sum8">NEG SUM8</option>
+      <option value="crc32">CRC32</option>
+      <option value="crc16ccitt">CRC16-CCITT (0x1021)</option>
+      <option value="xor32_le">XOR32 LE</option>
+      <option value="xor8">XOR8</option>
+    </select>
+
+    <label>Начало диапазона (hex)</label>
+    <input type="text" id="startOffset" value="0x0000">
+
+    <label>Конец диапазона (hex / auto)</label>
+    <input type="text" id="endOffset" value="auto">
+
+    <label>Смещение записи КС (hex)</label>
+    <input type="text" id="csOffset" value="0x0000">
+
+    <label>Исключать байты КС из расчёта</label>
+    <select id="excludeCs">
+      <option value="yes">Да (обнулять при расчёте)</option>
+      <option value="no">Нет</option>
+    </select>
+  </div>
+
+</div>
+
+<!-- RIGHT -->
+<div>
+
+  <!-- RESULTS -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-title">Результат</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="result-card">
+        <div class="r-label">Вычисленная КС</div>
+        <div class="r-value" id="rCalc">—</div>
+        <div class="r-detail" id="rCalcD"></div>
+      </div>
+      <div class="result-card">
+        <div class="r-label">КС в файле</div>
+        <div class="r-value" id="rStored">—</div>
+        <div class="r-detail" id="rStoredD"></div>
+      </div>
+      <div class="result-card">
+        <div class="r-label">Диапазон</div>
+        <div class="r-value" style="font-size:13px" id="rRange">—</div>
+        <div class="r-detail" id="rRangeD"></div>
+      </div>
+      <div class="result-card">
+        <div class="r-label">Статус</div>
+        <div style="margin-top:5px" id="rStatus"><span class="status-badge s-na">Нет данных</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('hex')">HEX</div>
+      <div class="tab" onclick="switchTab('diff')">Сравнение</div>
+      <div class="tab" onclick="switchTab('scan')">Поиск КС</div>
+      <div class="tab" onclick="switchTab('log')">Лог</div>
+      <div class="tab" onclick="switchTab('info')">Справка</div>
+    </div>
+
+    <!-- HEX -->
+    <div class="tab-content active" id="tab-hex">
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <input type="text" id="hexGotoAddr" placeholder="Адрес (hex)" style="width:160px">
+        <button class="btn btn-secondary" style="width:auto;margin:0;padding:7px 12px;font-size:11px" onclick="hexGoto()">Перейти</button>
+        <span style="font-size:10px;color:#444;margin-left:6px">
+          <span style="color:#ff6b35">■</span> диапазон &nbsp;
+          <span style="color:#4caf82">■</span> КС-поле &nbsp;
+          <span style="color:#ffc107">■</span> различия
+        </span>
+      </div>
+      <div class="hex-viewer" id="hexViewer"><div style="color:#333;padding:20px;text-align:center">Загрузите файл</div></div>
+    </div>
+
+    <!-- DIFF -->
+    <div class="tab-content" id="tab-diff">
+      <div id="diffContent"><div style="color:#444;font-size:12px;padding:20px;text-align:center">Загрузите сток и изменённый файл для сравнения</div></div>
+    </div>
+
+    <!-- SCAN -->
+    <div class="tab-content" id="tab-scan">
+      <div id="scanContent"><div style="color:#444;font-size:12px;padding:20px;text-align:center">Результаты поиска появятся здесь</div></div>
+    </div>
+
+    <!-- LOG -->
+    <div class="tab-content" id="tab-log">
+      <div class="log" id="logArea">
+        <div class="li">[INFO] ECU Checksum Tool v2.8</div>
+        <div class="li">[INFO] Загрузите сток (шаг 1) и изменённый файл (шаг 2)</div>
+        <div class="li">[INFO] Нажмите "Найти КС через сравнение файлов"</div>
+      </div>
+    </div>
+
+    <!-- INFO -->
+    <div class="tab-content" id="tab-info">
+      <div id="ecuInfoContent" style="font-size:12px;line-height:1.8;color:#888">
+        Выберите модель ЭБУ слева для справки.
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let stockData = null, stockName = '';
+let modData = null, modName = '';
+let activeData = null; // что показываем в hex viewer
+
+// Найденные параметры КС
+let foundParams = null; // { algo, start, end, csOffset, csSize, excludeCs }
+// Cached diff set (recomputed only when files change)
+let cachedDiffSet = null;
+
+// ============================================================
+// ECU PRESETS
+// ============================================================
+const PRESETS = {
+  cm871_isx:   { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x008', info:'<b>CM871 ISX/QSX</b><br>SUM32 LE, КС ~0x008' },
+  cm2350a:     { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x000', info:'<b>CM2350A ISX15/X15</b><br>SUM32 LE, блочная структура' },
+  cm2350b:     { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x000', info:'<b>CM2350B ISB6.7</b><br>SUM32 LE' },
+  cm2150:      { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x004', info:'<b>CM2150 ISB/ISL</b><br>SUM32 LE, КС ~0x004' },
+  cm2220c:     { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x004', info:'<b>CM2220C ISC/ISL</b><br>SUM32 LE' },
+  cm2250:      { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x008', info:'<b>CM2250 ISX11.9</b><br>SUM32 LE' },
+  edc17cv44:   { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x0',   info:'<b>EDC17CV44 — Cummins ISB4.5/ISF</b><br><br>Используйте <b>Найти КС через сравнение файлов</b> или <b>Авто-поиск в стоке</b> — алгоритм и смещение будут определены автоматически по вашему файлу.' },
+  edc17cp52:   { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x0',   info:'<b>EDC17CP52 — DAF/MAN/Paccar</b><br><br>Используйте авто-определение.' },
+  edc17c64:    { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x0',   info:'<b>EDC17C64 — Volvo/Renault</b><br><br>Используйте авто-определение.' },
+  edc17_generic:{ algo:'sum32_le', start:'0x0', end:'auto', cs:'0x0',  info:'<b>EDC17 Универсальный</b><br><br>Используйте авто-определение.' },
+  edc16cp31:   { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x300', info:'<b>EDC16CP31</b><br>SUM32 LE или CRC16-CCITT' },
+  edc7uc31:    { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x004', info:'<b>EDC7UC31</b><br>SUM32 LE, КС ~0x004' },
+  manual:      { algo:'sum32_le', start:'0x0', end:'auto', cs:'0x0',   info:'Ручной режим. Настройте параметры вручную.' }
+};
+
+function applyPreset() {
+  const p = PRESETS[document.getElementById('ecuModel').value] || PRESETS.manual;
+  document.getElementById('algorithm').value = p.algo;
+  document.getElementById('startOffset').value = p.start;
+  document.getElementById('endOffset').value = p.end;
+  document.getElementById('csOffset').value = p.cs;
+  document.getElementById('ecuInfoContent').innerHTML = p.info;
+}
+
+// ============================================================
+// FILE LOADING
+// ============================================================
+document.getElementById('fiStock').addEventListener('change', e => { if (e.target.files[0]) loadStock(e.target.files[0]); });
+document.getElementById('fiMod').addEventListener('change', e => { if (e.target.files[0]) loadMod(e.target.files[0]); });
+
+function loadStock(file) {
+  readBin(file, data => {
+    stockData = data; stockName = file.name;
+    showFileInfo('fiStockInfo','fiStockName','fiStockMeta', file.name, data.length);
+    addLog('i', `Сток загружен: ${file.name} (${fmtSize(data.length)})`);
+    activeData = stockData;
+    renderHex(0);
+    checkBothLoaded();
+    updateEnableButtons();
+  });
+}
+
+function loadMod(file) {
+  readBin(file, data => {
+    modData = data; modName = file.name;
+    showFileInfo('fiModInfo','fiModName','fiModMeta', file.name, data.length);
+    addLog('i', `Изменённый загружен: ${file.name} (${fmtSize(data.length)})`);
+    activeData = modData;
+    renderHex(0);
+    checkBothLoaded();
+    updateEnableButtons();
+  });
+}
+
+function readBin(file, cb) {
+  const r = new FileReader();
+  r.onload = e => cb(new Uint8Array(e.target.result));
+  r.readAsArrayBuffer(file);
+}
+
+function showFileInfo(infoId, nameId, metaId, name, size) {
+  document.getElementById(nameId).textContent = name;
+  document.getElementById(metaId).textContent = `${fmtSize(size)} / 0x${size.toString(16).toUpperCase()}`;
+  document.getElementById(infoId).style.display = 'block';
+}
+
+function updateEnableButtons() {
+  const hasStock = !!stockData;
+  const hasMod = !!modData;
+  const hasBoth = hasStock && hasMod;
+  document.getElementById('btnDiff').disabled = !hasBoth;
+  document.getElementById('btnStockScan').disabled = !hasStock;
+  document.getElementById('btnDescScan').disabled = !hasStock;
+  document.getElementById('btnCalc').disabled = !hasMod && !hasStock;
+  document.getElementById('btnScanMan').disabled = !hasMod && !hasStock;
+  document.getElementById('btnFix').disabled = true;
+}
+
+function checkBothLoaded() {
+  if (!stockData || !modData) return;
+  if (stockData.length !== modData.length) {
+    addLog('w', `Размеры файлов отличаются: сток=${fmtSize(stockData.length)}, изменённый=${fmtSize(modData.length)}`);
+    document.getElementById('diSizeMatch').textContent = '⚠ Отличаются!';
+    document.getElementById('diSizeMatch').style.color = '#f44336';
+  } else {
+    document.getElementById('diSizeMatch').textContent = '✔ Совпадают';
+    document.getElementById('diSizeMatch').style.color = '#4caf82';
+  }
+  // Count diffs and cache for hex viewer
+  const diffs = getDiffPositions(stockData, modData);
+  cachedDiffSet = new Set(diffs);
+  const regions = getDiffRegions(diffs);
+  document.getElementById('diDiffBytes').textContent = diffs.length.toLocaleString();
+  document.getElementById('diDiffRegions').textContent = regions.length;
+  document.getElementById('diffInfo').style.display = 'block';
+  addLog('i', `Различий: ${diffs.length} байт в ${regions.length} регионах`);
+}
+
+// ============================================================
+// DIFF UTILITIES
+// ============================================================
+function getDiffPositions(a, b) {
+  const len = Math.min(a.length, b.length);
+  const diffs = [];
+  for (let i = 0; i < len; i++) if (a[i] !== b[i]) diffs.push(i);
+  return diffs;
+}
+
+function getDiffRegions(diffs, gap = 8) {
+  if (!diffs.length) return [];
+  const regions = [];
+  let start = diffs[0], last = diffs[0];
+  for (let i = 1; i < diffs.length; i++) {
+    if (diffs[i] - last > gap) { regions.push({ start, end: last + 1 }); start = diffs[i]; }
+    last = diffs[i];
+  }
+  regions.push({ start, end: last + 1 });
+  return regions;
+}
+
+// ============================================================
+// DIFF-BASED CHECKSUM DETECTION (MAIN NEW FEATURE)
+// ============================================================
+async function diffAnalysis() {
+  if (!stockData || !modData) { addLog('e', 'Загрузите оба файла'); return; }
+
+  switchTab('diff');
+  addLog('i', '=== Поиск КС через сравнение файлов ===');
+  setProgress(0, true);
+
+  const diffs = getDiffPositions(stockData, modData);
+  if (diffs.length === 0) {
+    addLog('w', 'Файлы идентичны — нет изменений');
+    setProgress(0, false);
+    return;
+  }
+
+  const regions = getDiffRegions(diffs, 16);
+  addLog('i', `Различий: ${diffs.length} байт, ${regions.length} регионов`);
+
+  // Render diff view
+  renderDiffTable(regions);
+
+  const fileLen = stockData.length;
+  // For large files (>64KB), skip 8-bit algorithms — they have 256 possible values
+  // and generate thousands of false positives in multi-megabyte firmware files
+  const isLargeFile = fileLen > 65536;
+  const ALGOS = isLargeFile
+    ? ['sum32_le','sum32_be','neg_sum32_le','neg_sum32_be','crc32','xor32_le','crc16ccitt','sum16_le','sum16_be']
+    : ['sum32_le','sum32_be','neg_sum32_le','neg_sum32_be','sum16_le','sum16_be','neg_sum8','sum8','crc32','crc16ccitt','xor32_le','xor8'];
+  const results = [];
+  let tested = 0;
+  const totalTests = regions.length * ALGOS.length * 4; // 4 range variants per algo
+
+  // Strategy: for each diff region, assume it's the checksum location.
+  // Try multiple calc ranges. If stock checksum at that location = computed → found!
+  for (const region of regions) {
+    for (const algo of ALGOS) {
+      const csSize = getAlgoSize(algo);
+      if (region.end - region.start < csSize) { tested++; continue; }
+
+      // Align to csSize boundary
+      const csOff = Math.floor(region.start / csSize) * csSize;
+      const isBE = isBigEndian(algo);
+
+      // Try multiple calculation ranges
+      const rawRanges = [
+        [0, fileLen],
+        [0, region.start], // up to checksum
+        [csOff + csSize, fileLen], // after checksum
+      ];
+      // Also try: skip first N bytes (header variants)
+      for (const skip of [0x10, 0x20, 0x100]) {
+        if (skip < fileLen) rawRanges.push([skip, fileLen]);
+      }
+      // Filter: range must cover at least 10% of file OR at least 4KB (whichever is larger)
+      // This eliminates "XOR of 516 bytes at end of file" type false positives
+      const minCoverage = Math.max(0x1000, Math.round(fileLen * 0.10));
+      const ranges = rawRanges.filter(([rs, re]) => re - rs >= minCoverage);
+
+      for (const [rangeStart, rangeEnd] of ranges) {
+        tested++;
+        if (tested % 100 === 0) setProgress(Math.round(tested / totalTests * 100), true);
+
+        // Read what's stored in stock at csOff
+        const stockStored = readVal(stockData, csOff, csSize, isBE);
+        if (stockStored === null) continue;
+
+        // Compute checksum of stock in this range (with csOff zeroed if in range)
+        const stockComputed = computeCs(stockData, rangeStart, rangeEnd, algo, csOff, true);
+        if (!stockComputed) continue;
+
+        if (stockComputed.value === stockStored) {
+          // Verify: compute for mod file
+          const modStored = readVal(modData, csOff, csSize, isBE);
+          const modComputed = computeCs(modData, rangeStart, rangeEnd, algo, csOff, true);
+
+          const modNeedsfix = modStored !== (modComputed ? modComputed.value : null);
+          const coverage = (rangeEnd - rangeStart) / fileLen;
+
+          // Confidence scoring:
+          // - bit-width: 32-bit=100, 16-bit=50, 8-bit=10
+          // - CRC bonus: +20 (CRC has much fewer false positives than SUM)
+          // - needs fix: +10 (found actual problem)
+          // - coverage: dominant factor — low coverage = heavy penalty
+          let conf = csSize === 4 ? 100 : csSize === 2 ? 50 : 10;
+          if (algo.startsWith('crc')) conf += 20;
+          if (modNeedsfix) conf += 10;
+          if (coverage < 0.25)      conf -= 60; // < 25% coverage: very suspicious
+          else if (coverage < 0.50) conf -= 20; // < 50%: mildly suspicious
+          else                      conf += Math.round(coverage * 30); // full coverage: bonus
+
+          results.push({
+            algo, csOff, csSize, rangeStart, rangeEnd, isBE,
+            stockValue: stockStored,
+            modValue: modStored,
+            modCorrect: modComputed ? modComputed.value : null,
+            modNeedsfix, coverage,
+            confidence: conf,
+            label: ALGO_LABELS[algo] || algo
+          });
+          addLog('o', `НАЙДЕНО: ${ALGO_LABELS[algo]}, КС@0x${csOff.toString(16).toUpperCase()}, диапазон [0x${rangeStart.toString(16).toUpperCase()}–0x${rangeEnd.toString(16).toUpperCase()}] покрытие ${(coverage*100).toFixed(1)}%`);
+          break; // Found for this region+algo, skip other ranges
+        }
+      }
+    }
+    await tick();
+  }
+
+  setProgress(100, true);
+  setTimeout(() => setProgress(0, false), 800);
+
+  if (results.length === 0) {
+    addLog('w', 'Diff-метод: совпадений не найдено. Используйте "Авто-поиск в стоке"');
+    const dcount = diffs.length;
+    document.getElementById('diffContent').innerHTML = `
+      <div style="color:#ff9800;font-size:12px;padding:14px;background:#1a1200;border-radius:5px;border:1px solid #3a2800;line-height:1.8">
+        <b>Метод сравнения файлов не нашёл КС.</b><br><br>
+        <b style="color:#fff">Наиболее вероятная причина:</b><br>
+        КС в изменённом файле <b>не пересчитывалась</b> — байты КС остались такими же как в стоке,
+        поэтому в diff они не видны (${dcount.toLocaleString()} изменённых байт — это только данные карт).<br><br>
+        <b style="color:#4caf82">Правильный способ для этого случая:</b><br>
+        Нажмите <b>«Авто-поиск в стоке»</b> — программа найдёт алгоритм и смещение КС
+        по стоковому файлу, а затем покажет, какое значение нужно записать в изменённый файл.
+      </div>`;
+    return;
+  }
+
+  addLog('o', `Итого найдено вариантов: ${results.length}`);
+  showDiffResults(results);
+}
+
+function showDiffResults(results) {
+  // Sort by confidence descending — best candidates first
+  results.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  // Auto-apply: require 32-bit algo AND coverage >= 25%; otherwise don't auto-apply
+  const best = results.find(r => r.csSize === 4 && (r.coverage || 0) >= 0.25)
+             || results.find(r => r.csSize === 4)
+             || results[0];
+  const autoApplied = best && (best.coverage || 0) >= 0.25;
+
+  let html = autoApplied
+    ? `<div style="color:#4caf82;font-size:12px;padding:8px 10px;background:#0a1a0a;border-radius:5px;margin-bottom:10px;border:1px solid #1a4a2a">
+        <b>✔ КС найдена через сравнение файлов!</b><br>
+        <span style="color:#aaa">Лучший результат применён автоматически.</span>
+      </div>`
+    : `<div style="color:#ff9800;font-size:12px;padding:8px 10px;background:#1a1000;border-radius:5px;margin-bottom:10px;border:1px solid #3a2800">
+        <b>⚠ Найдены варианты, но все с низким покрытием файла.</b><br>
+        <span style="color:#aaa">Авто-применение отключено. Проверьте вручную или используйте "Авто-поиск в стоке".</span>
+      </div>`;
+
+  html += `<table class="scan-table"><thead><tr>
+    <th>Алгоритм</th><th>КС смещение</th><th>Диапазон</th><th>Покрытие</th><th>КС в стоке</th><th>Нужна в изм.</th><th>Статус изм.</th><th></th>
+  </tr></thead><tbody>`;
+
+  for (const r of results) {
+    const needFix = r.modNeedsfix;
+    const correct = r.modCorrect !== null ? '0x'+toHex(r.modCorrect, r.csSize) : '?';
+    const cov = r.coverage !== undefined ? (r.coverage*100).toFixed(1)+'%' : '?';
+    const covCls = (r.coverage||0) < 0.25 ? 'c-warn' : 'c-ok';
+    html += `<tr onclick="applyFoundParams(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+      <td class="c-ok">${r.label}</td>
+      <td class="c-ok">0x${r.csOff.toString(16).toUpperCase().padStart(4,'0')}</td>
+      <td style="font-size:10px;color:#666">0x${r.rangeStart.toString(16).toUpperCase()}–0x${r.rangeEnd.toString(16).toUpperCase()}</td>
+      <td class="${covCls}">${cov}</td>
+      <td class="c-ok">0x${toHex(r.stockValue, r.csSize)}</td>
+      <td class="${needFix?'c-warn':'c-ok'}">${correct}</td>
+      <td>${needFix ? '<span style="color:#f44336">✘ Неверная</span>' : '<span style="color:#4caf82">✔ Верная</span>'}</td>
+      <td style="color:#7ec8e3;cursor:pointer">→</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  html += `<div style="font-size:10px;color:#444;margin-top:6px">Нажмите строку для применения параметров</div>`;
+
+  document.getElementById('diffContent').innerHTML = html;
+
+  // Auto-apply only if confidence is high enough
+  if (autoApplied) applyFoundParams(best);
+}
+
+// ============================================================
+// DESCRIPTOR TABLE SCANNER (Bosch Tricore / EDC17 / MED17)
+// Modern tools like Kess V3 / Autotuner read an embedded table in
+// the first ~2KB of firmware: [mem_start:4][mem_end:4][stored_cs:4]
+// ============================================================
+async function scanDescriptorTable() {
+  if (!stockData) { addLog('e', 'Загрузите сток-файл'); return; }
+  switchTab('scan');
+  addLog('i', '=== Поиск дескриптора КС (Bosch/Tricore) ===');
+  setProgress(0, true);
+
+  const fileLen = stockData.length;
+  const dv = new DataView(stockData.buffer, stockData.byteOffset, stockData.byteLength);
+
+  // Tricore memory bases: TC1782/TC1793 flash at 0x80000000 or 0xA0000000
+  // Also try 0xC0000000 and 0x00800000 used by some Bosch variants
+  const MEM_BASES = [0x80000000, 0xA0000000, 0xA8000000, 0xC0000000, 0x00800000, 0x00000000];
+  const ALGOS = ['sum32_le','neg_sum32_le','crc32','sum32_be','neg_sum32_be'];
+  // Allow smaller min range (some blocks are 64KB)
+  const MIN_RANGE = Math.max(0x1000, Math.round(fileLen * 0.02));
+
+  const results = [];
+  const seen = new Set();
+
+  // Scan first 0x8000 bytes (32KB) — some ECUs put descriptor well past 4KB
+  const scanEnd = Math.min(0x8000, fileLen - 12);
+
+  for (let i = 0; i <= scanEnd; i += 4) {
+    if (i % 0x200 === 0) { setProgress(Math.round(i / scanEnd * 60), true); await tick(); }
+
+    for (const base of MEM_BASES) {
+      // Try both LE and BE address encoding in the descriptor itself
+      for (const addrLE of [true, false]) {
+      // Single-entry check: [start][end][cs]
+      for (let nBlocks = 1; nBlocks <= 4; nBlocks++) {
+        if (i + nBlocks * 12 > fileLen) break;
+
+        const blocks = [];
+        let ok = true;
+
+        for (let b = 0; b < nBlocks; b++) {
+          const o = i + b * 12;
+          const sAddr = dv.getUint32(o,     addrLE);
+          const eAddr = dv.getUint32(o + 4, addrLE);
+          const stoCs = dv.getUint32(o + 8, true); // stored CS always LE
+
+          const sOff = base === 0 ? sAddr : (sAddr - base);
+          const eOff = base === 0 ? eAddr : (eAddr - base);
+
+          // Sanity checks
+          if (sOff < 0 || sOff >= fileLen)   { ok = false; break; }
+          if (eOff <= sOff || eOff > fileLen) { ok = false; break; }
+          if (eOff - sOff < MIN_RANGE)        { ok = false; break; }
+          // Reject implausible values (all-zero, all-FF)
+          if (stoCs === 0x00000000 && sAddr === 0 && eAddr === 0) { ok = false; break; }
+
+          blocks.push({ sOff, eOff, stoCs, descCsOff: o + 8 });
+        }
+        if (!ok || blocks.length === 0) continue;
+
+        // Try each algorithm against all blocks
+        for (const algo of ALGOS) {
+          const csSize = getAlgoSize(algo);
+          const isBE   = isBigEndian(algo);
+          let allOk = true;
+          const matched = [];
+
+          for (const blk of blocks) {
+            const csInRange = blk.descCsOff >= blk.sOff && blk.descCsOff + csSize <= blk.eOff;
+            const r = computeCs(stockData, blk.sOff, blk.eOff, algo, blk.descCsOff, csInRange);
+            if (r && r.value === blk.stoCs) {
+              matched.push({ ...blk, algo, csInRange, isBE });
+            } else {
+              allOk = false; break;
+            }
+          }
+
+          if (!allOk || matched.length === 0) continue;
+
+          const key = `${i}:${algo}:${base}:${nBlocks}:${addrLE}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          results.push({ descOff: i, base, algo, blocks: matched });
+          addLog('o', `ДЕСКРИПТОР: ${ALGO_LABELS[algo]}, ${matched.length} блок(а), @ 0x${i.toString(16).toUpperCase()}, база 0x${base.toString(16).toUpperCase()}`);
+        }
+      }
+      } // end addrLE loop
+    }
+  }
+
+  setProgress(100, true);
+  setTimeout(() => setProgress(0, false), 500);
+
+  if (!results.length) {
+    addLog('w', 'Дескриптор не найден. Попробуйте "Авто-поиск в стоке"');
+    document.getElementById('scanContent').innerHTML = `
+      <div style="color:#888;font-size:12px;padding:14px;background:#12151e;border-radius:5px;line-height:1.8">
+        <b style="color:#b07ef8">Дескриптор КС не обнаружен.</b><br><br>
+        Возможные причины:<br>
+        • Файл не является Bosch Tricore (EDC17/MED17)<br>
+        • Дескриптор расположен за пределами первых 4KB<br>
+        • Нестандартная структура (используйте "Авто-поиск в стоке")
+      </div>`;
+    return;
+  }
+
+  addLog('o', `Найдено дескрипторов: ${results.length}`);
+  renderDescriptorResults(results);
+}
+
+function renderDescriptorResults(results) {
+  let html = `<div style="color:#b07ef8;font-size:12px;font-weight:600;margin-bottom:10px">
+    Найдено дескрипторов: ${results.length} — как Kess/Autotuner
+  </div>`;
+
+  for (const r of results) {
+    const algoName = ALGO_LABELS[r.algo] || r.algo;
+    const baseHex  = r.base ? '0x'+r.base.toString(16).toUpperCase() : 'file';
+    html += `<div style="background:#12151e;border:1px solid #4a2a7a;border-radius:6px;padding:12px;margin-bottom:10px">`;
+    html += `<div style="color:#b07ef8;font-weight:600;font-size:12px;margin-bottom:8px">
+      ${algoName} &nbsp;|&nbsp; ${r.blocks.length} блок(а) &nbsp;|&nbsp;
+      Дескриптор @ 0x${r.descOff.toString(16).toUpperCase()} &nbsp;|&nbsp; база ${baseHex}
+    </div>`;
+
+    html += `<table class="scan-table"><thead><tr>
+      <th>#</th><th>Начало</th><th>Конец</th><th>Размер</th><th>КС в стоке</th>`;
+    if (modData) html += `<th>КС нужна</th><th>Статус</th>`;
+    html += `<th></th></tr></thead><tbody>`;
+
+    let anyNeedFix = false;
+    for (let bi = 0; bi < r.blocks.length; bi++) {
+      const blk = r.blocks[bi];
+      const szKB = ((blk.eOff - blk.sOff) / 1024).toFixed(0);
+      let modCells = '';
+      if (modData) {
+        const mr = computeCs(modData, blk.sOff, blk.eOff, r.algo, blk.descCsOff, blk.csInRange);
+        const modSt = readVal(modData, blk.descCsOff, 4, blk.isBE);
+        const needFix = modSt !== (mr ? mr.value : null);
+        if (needFix) anyNeedFix = true;
+        const correct = mr ? '0x'+toHex(mr.value, 4) : '?';
+        modCells = `<td class="${needFix?'c-warn':'c-ok'}">${correct}</td>
+          <td>${needFix ? '<span style="color:#f44336">✘ Неверная</span>' : '<span style="color:#4caf82">✔ Верная</span>'}</td>`;
+      }
+      const bJson = JSON.stringify({...blk, algo: r.algo}).replace(/"/g,'&quot;');
+      html += `<tr>
+        <td style="color:#555">${bi+1}</td>
+        <td class="c-blue">0x${blk.sOff.toString(16).toUpperCase().padStart(6,'0')}</td>
+        <td class="c-blue">0x${blk.eOff.toString(16).toUpperCase().padStart(6,'0')}</td>
+        <td style="color:#888">${szKB} KB</td>
+        <td class="c-ok">0x${toHex(blk.stoCs, 4)}</td>
+        ${modCells}
+        <td><span onclick="applyDescBlock(${bJson})" style="color:#7ec8e3;cursor:pointer;font-size:10px">→ Применить</span></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+
+    if (modData) {
+      const label = anyNeedFix
+        ? `✏️ Исправить все ${r.blocks.length} блок(а) КС`
+        : `✔ Все блоки КС верны`;
+      const style = anyNeedFix
+        ? 'background:#1a6e3c;color:#fff'
+        : 'background:#1a3a1a;color:#4caf82;cursor:default';
+      const rJson = JSON.stringify(r).replace(/"/g,'&quot;');
+      if (anyNeedFix)
+        html += `<button onclick="fixAllBlocks(${rJson})" style="margin-top:8px;width:100%;padding:8px;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;${style}">${label}</button>`;
+      else
+        html += `<div style="margin-top:8px;padding:6px;border-radius:4px;text-align:center;font-size:11px;${style}">${label}</div>`;
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('scanContent').innerHTML = html;
+}
+
+function applyDescBlock(blk) {
+  if (typeof blk === 'string') blk = JSON.parse(blk);
+  document.getElementById('algorithm').value = blk.algo;
+  document.getElementById('startOffset').value = '0x' + blk.sOff.toString(16).toUpperCase();
+  document.getElementById('endOffset').value   = '0x' + blk.eOff.toString(16).toUpperCase();
+  document.getElementById('csOffset').value    = '0x' + blk.descCsOff.toString(16).toUpperCase();
+  document.getElementById('excludeCs').value   = blk.csInRange ? 'yes' : 'no';
+  if (modData) document.getElementById('btnFix').disabled = false;
+  addLog('o', `Параметры блока применены: ${ALGO_LABELS[blk.algo]}, КС@0x${blk.descCsOff.toString(16).toUpperCase()}`);
+  activeData = modData || stockData;
+  renderHex(Math.max(0, blk.descCsOff - 32), blk.sOff, blk.eOff, blk.descCsOff, 4);
+  switchTab('hex');
+}
+
+function fixAllBlocks(r) {
+  if (typeof r === 'string') r = JSON.parse(r);
+  const data = modData || stockData;
+  if (!data) return;
+
+  let fixed = 0;
+  for (const blk of r.blocks) {
+    const res = computeCs(data, blk.sOff, blk.eOff, r.algo, blk.descCsOff, blk.csInRange);
+    if (!res) { addLog('e', `Ошибка блока 0x${blk.sOff.toString(16)}`); continue; }
+
+    const newBytes = valToBytes(res.value, 4, blk.isBE);
+    for (let i = 0; i < 4; i++) data[blk.descCsOff + i] = newBytes[i];
+
+    const verify = readVal(data, blk.descCsOff, 4, blk.isBE);
+    if (verify !== res.value) {
+      addLog('e', `Ошибка записи блока 0x${blk.sOff.toString(16)}`);
+    } else {
+      addLog('o', `Блок ${fixed+1}: 0x${blk.sOff.toString(16).toUpperCase()}–0x${blk.eOff.toString(16).toUpperCase()} → КС 0x${toHex(res.value, 4)}`);
+      fixed++;
+    }
+  }
+
+  addLog('o', `Исправлено блоков: ${fixed} из ${r.blocks.length}`);
+  document.getElementById('btnSave').style.display = 'block';
+  document.getElementById('btnSave').disabled = false;
+  // Re-render results to update statuses
+  renderDescriptorResults([r]);
+}
+
+function applyFoundParams(r) {
+  if (typeof r === 'string') r = JSON.parse(r);
+  foundParams = r;
+
+  document.getElementById('algorithm').value = r.algo;
+  document.getElementById('startOffset').value = '0x' + r.rangeStart.toString(16).toUpperCase();
+  document.getElementById('endOffset').value = r.rangeEnd === (modData||stockData||{length:0}).length ? 'auto' :
+    '0x' + r.rangeEnd.toString(16).toUpperCase();
+  document.getElementById('csOffset').value = '0x' + r.csOff.toString(16).toUpperCase().padStart(4,'0');
+  document.getElementById('excludeCs').value = 'yes';
+
+  addLog('o', `Применено: ${ALGO_LABELS[r.algo]}, смещение КС=0x${r.csOff.toString(16).toUpperCase()}`);
+
+  if (r.modNeedsfix) {
+    document.getElementById('btnFix').disabled = false;
+    addLog('w', `В изменённом файле КС НЕВЕРНАЯ. Нажмите "Исправить КС"`);
+  } else {
+    addLog('o', `КС в изменённом файле уже верная`);
+  }
+
+  // Show in hex
+  activeData = modData || stockData;
+  renderHex(Math.max(0, r.csOff - 32), r.rangeStart, r.rangeEnd, r.csOff, r.csSize);
+  switchTab('hex');
+}
+
+// ============================================================
+// CS PREFIX-SUM ACCUMULATOR  (O(n) build → O(1) range query)
+// Supports: sum32_le/be, neg_sum32_le/be, xor32_le,
+//           sum16_le/be, sum8, neg_sum8, xor8
+// Returns null for crc32/crc16 (caller falls back to computeCs)
+// ============================================================
+class CsAccumulator {
+  constructor(data) {
+    const n  = data.length;
+    const n4 = n >> 2;
+    const n2 = n >> 1;
+    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+    // Float64 prefix sums: max sum for 2MB file = 524288 × 4294967295 ≈ 2.25e15 < 2^53 ✓
+    const s32le = new Float64Array(n4 + 1);
+    const s32be = new Float64Array(n4 + 1);
+    const x32le = new Uint32Array(n4 + 1);
+    const s16le = new Float64Array(n2 + 1);
+    const s16be = new Float64Array(n2 + 1);
+    const s8    = new Float64Array(n  + 1);
+    const x8    = new Uint8Array(n  + 1);
+
+    for (let i = 0; i < n4; i++) {
+      const le = dv.getUint32(i * 4, true);
+      const be = dv.getUint32(i * 4, false);
+      s32le[i+1] = s32le[i] + le;
+      s32be[i+1] = s32be[i] + be;
+      x32le[i+1] = x32le[i] ^ le;
+    }
+    for (let i = 0; i < n2; i++) {
+      s16le[i+1] = s16le[i] + dv.getUint16(i * 2, true);
+      s16be[i+1] = s16be[i] + dv.getUint16(i * 2, false);
+    }
+    for (let i = 0; i < n; i++) {
+      s8[i+1] = s8[i] + data[i];
+      x8[i+1] = x8[i] ^ data[i];
+    }
+
+    this._dv   = dv;
+    this._data = data;
+    this._s32le = s32le; this._s32be = s32be; this._x32le = x32le;
+    this._s16le = s16le; this._s16be = s16be;
+    this._s8 = s8; this._x8 = x8;
+  }
+
+  // Returns checksum value (number), or null if algo not supported / alignment mismatch.
+  // csOff ≥ 0: zero the CS field at that offset before computing (for verification).
+  query(algo, s, e, csOff = -1) {
+    const dv = this._dv, data = this._data;
+    switch (algo) {
+      case 'sum32_le': {
+        if ((s | e) & 3) return null;
+        let v = this._s32le[e>>2] - this._s32le[s>>2];
+        if (csOff >= s && csOff + 4 <= e && !(csOff & 3)) v -= dv.getUint32(csOff, true);
+        return v >>> 0;
+      }
+      case 'neg_sum32_le': {
+        if ((s | e) & 3) return null;
+        let v = this._s32le[e>>2] - this._s32le[s>>2];
+        if (csOff >= s && csOff + 4 <= e && !(csOff & 3)) v -= dv.getUint32(csOff, true);
+        return (-v) >>> 0;
+      }
+      case 'xor32_le': {
+        if ((s | e) & 3) return null;
+        let v = this._x32le[e>>2] ^ this._x32le[s>>2];
+        if (csOff >= s && csOff + 4 <= e && !(csOff & 3)) v ^= dv.getUint32(csOff, true);
+        return v >>> 0;
+      }
+      case 'sum32_be': {
+        if ((s | e) & 3) return null;
+        let v = this._s32be[e>>2] - this._s32be[s>>2];
+        if (csOff >= s && csOff + 4 <= e && !(csOff & 3)) v -= dv.getUint32(csOff, false);
+        return v >>> 0;
+      }
+      case 'neg_sum32_be': {
+        if ((s | e) & 3) return null;
+        let v = this._s32be[e>>2] - this._s32be[s>>2];
+        if (csOff >= s && csOff + 4 <= e && !(csOff & 3)) v -= dv.getUint32(csOff, false);
+        return (-v) >>> 0;
+      }
+      case 'sum16_le': {
+        if ((s | e) & 1) return null;
+        let v = this._s16le[e>>1] - this._s16le[s>>1];
+        if (csOff >= s && csOff + 2 <= e && !(csOff & 1)) v -= dv.getUint16(csOff, true);
+        return (v & 0xFFFF) >>> 0;
+      }
+      case 'sum16_be': {
+        if ((s | e) & 1) return null;
+        let v = this._s16be[e>>1] - this._s16be[s>>1];
+        if (csOff >= s && csOff + 2 <= e && !(csOff & 1)) v -= dv.getUint16(csOff, false);
+        return (v & 0xFFFF) >>> 0;
+      }
+      case 'sum8': {
+        let v = this._s8[e] - this._s8[s];
+        if (csOff >= s && csOff + 1 <= e) v -= data[csOff];
+        return (v & 0xFF) >>> 0;
+      }
+      case 'neg_sum8': {
+        let v = this._s8[e] - this._s8[s];
+        if (csOff >= s && csOff + 1 <= e) v -= data[csOff];
+        return ((-v) & 0xFF) >>> 0;
+      }
+      case 'xor8': {
+        let v = this._x8[e] ^ this._x8[s];
+        if (csOff >= s && csOff + 1 <= e) v ^= data[csOff];
+        return (v & 0xFF) >>> 0;
+      }
+      default: return null; // crc32, crc16ccitt → caller must use computeCs
+    }
+  }
+}
+
+// ============================================================
+// STOCK SCAN  v2.8 — O(1) prefix-sum approach (~100× faster)
+// ============================================================
+async function stockScan() {
+  if (!stockData) { addLog('e', 'Загрузите сток-файл'); return; }
+
+  switchTab('scan');
+  addLog('i', '=== Расширенный авто-поиск в стоке ===');
+  setProgress(0, true);
+
+  const fileLen = stockData.length;
+  const results = [];
+
+  // ── Build O(n) prefix-sum accumulators ────────────────────────────────
+  addLog('i', 'Инициализация...');
+  await tick();
+  const acc    = new CsAccumulator(stockData);
+  const accMod = modData ? new CsAccumulator(modData) : null;
+  setProgress(5, true);
+  await tick();
+
+  // ── Generate candidate ranges ─────────────────────────────────────────
+  const skips = [
+    0, 2, 4, 6, 8, 0xA, 0xC, 0x10, 0x14, 0x18, 0x1C, 0x20,
+    0x40, 0x60, 0x80, 0xC0, 0x100, 0x200, 0x300, 0x400,
+    0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x40000
+  ];
+  const rangeSet = new Set();
+  for (const s of skips) {
+    if (s < fileLen)               rangeSet.add(`${s}:${fileLen}`);
+    if (fileLen - s > 0)           rangeSet.add(`0:${fileLen-s}`);
+    if (s > 0 && fileLen-s > s)    rangeSet.add(`${s}:${fileLen-s}`);
+  }
+  for (let b = 0x1000; b < fileLen; b += 0x1000) {
+    rangeSet.add(`0:${b}`);
+    rangeSet.add(`${b}:${fileLen}`);
+  }
+  const rangeList = [...rangeSet]
+    .map(r => { const [a,b]=r.split(':'); return [+a,+b]; })
+    .filter(([a,b]) => b-a >= 4);
+
+  // Fast algos use accumulator (O(1) per query); CRC falls back to computeCs
+  const isLargeFile = fileLen > 65536;
+  const ALGOS_FAST = ['sum32_le','neg_sum32_le','xor32_le','sum32_be','neg_sum32_be',
+                      'sum16_le','sum16_be',
+                      ...(!isLargeFile ? ['sum8','neg_sum8','xor8'] : [])];
+  // CRC: only check key ranges (>50% file coverage) to keep it fast
+  const ALGOS_CRC  = ['crc32','crc16ccitt'];
+  const keyRanges  = rangeList.filter(([s,e]) => e-s > fileLen * 0.5);
+
+  // ── Phase 1: build value→ranges lookup dict using O(1) queries ────────
+  const dict32le = new Map(), dict32be = new Map();
+  const dict16le = new Map(), dict16be = new Map();
+  const dict8    = new Map();
+
+  const addToDict = (d, val, algo, rs, re) => {
+    if (!d.has(val)) d.set(val, []);
+    d.get(val).push({ algo, rangeStart:rs, rangeEnd:re });
+  };
+
+  let phase = 0;
+  const total1 = ALGOS_FAST.length * rangeList.length;
+  for (const algo of ALGOS_FAST) {
+    const csSize = getAlgoSize(algo);
+    const isbe   = isBigEndian(algo);
+    const d = csSize===4 ? (isbe ? dict32be : dict32le)
+            : csSize===2 ? (isbe ? dict16be : dict16le)
+            : dict8;
+    for (const [rs, re] of rangeList) {
+      phase++;
+      if (phase % 10000 === 0) { setProgress(5 + Math.round(phase/total1*40), true); await tick(); }
+      const val = acc.query(algo, rs, re); // O(1)
+      if (val !== null) addToDict(d, val, algo, rs, re);
+    }
+  }
+
+  // CRC slow path — limited to key ranges only
+  for (const algo of ALGOS_CRC) {
+    const csSize = getAlgoSize(algo);
+    const isbe   = isBigEndian(algo);
+    const d = csSize===4 ? (isbe ? dict32be : dict32le)
+            : csSize===2 ? (isbe ? dict16be : dict16le)
+            : dict8;
+    for (const [rs, re] of keyRanges) {
+      const r = computeCs(stockData, rs, re, algo, -1, false);
+      if (r) addToDict(d, r.value, algo, rs, re);
+    }
+  }
+
+  setProgress(50, true);
+  addLog('i', `Фаза 1 готова. Сканирую заголовок файла...`);
+  await tick();
+
+  // ── Phase 2: scan first 64 KB for CS field offset ─────────────────────
+  // CS fields are always in the firmware header, never in data area.
+  // Scanning first 64 KB covers all known Cummins/Bosch ECU layouts.
+  const scanEnd = Math.min(fileLen, 0x10000);
+  const dv      = new DataView(stockData.buffer, stockData.byteOffset, stockData.byteLength);
+  const seen    = new Set();
+
+  for (let off = 0; off + 2 <= scanEnd; off += 4) {
+    if ((off & 0xFFF) === 0) { setProgress(50 + Math.round(off/scanEnd*48), true); await tick(); }
+
+    const v32le = off+4 <= fileLen ? dv.getUint32(off, true)  : -1;
+    const v32be = off+4 <= fileLen ? dv.getUint32(off, false) : -1;
+    const v16le = off+2 <= fileLen ? dv.getUint16(off, true)  : -1;
+    const v16be = off+2 <= fileLen ? dv.getUint16(off, false) : -1;
+
+    const checks = [
+      [dict32le, v32le, 4, false],
+      [dict32be, v32be, 4, true],
+      [dict16le, v16le, 2, false],
+      [dict16be, v16be, 2, true],
+    ];
+    if (!isLargeFile) checks.push([dict8, stockData[off], 1, false]);
+
+    for (const [d, val, csSize, isbe] of checks) {
+      if (val === -1 || !d.has(val)) continue;
+      for (const m of d.get(val)) {
+        // Verify: recompute with CS field zeroed (O(1) via accumulator, fallback to computeCs for CRC)
+        let verified = false;
+        const fastVal = acc.query(m.algo, m.rangeStart, m.rangeEnd, off);
+        if (fastVal !== null) {
+          verified = (fastVal === val);
+        } else {
+          const r2 = computeCs(stockData, m.rangeStart, m.rangeEnd, m.algo, off, true);
+          verified = !!(r2 && r2.value === val);
+        }
+
+        if (verified) {
+          const key = `${m.algo}:${off}:${m.rangeStart}:${m.rangeEnd}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            let modStored = null, modCorrect = null, modNeedsfix = false;
+            if (modData && accMod && off + csSize <= modData.length) {
+              modStored = readVal(modData, off, csSize, isbe);
+              const fv = accMod.query(m.algo, m.rangeStart, m.rangeEnd, off);
+              modCorrect = fv !== null ? fv
+                : (() => { const mr = computeCs(modData, m.rangeStart, m.rangeEnd, m.algo, off, true); return mr ? mr.value : null; })();
+              modNeedsfix = modStored !== modCorrect;
+            }
+            results.push({
+              algo: m.algo, csOff: off, csSize, rangeStart: m.rangeStart, rangeEnd: m.rangeEnd,
+              value: val, isBE: isbe, excludeCs: true, label: ALGO_LABELS[m.algo],
+              modStored, modCorrect, modNeedsfix
+            });
+          }
+        }
+      }
+    }
+  }
+
+  setProgress(100, true);
+  setTimeout(() => setProgress(0, false), 600);
+
+  addLog(results.length ? 'o' : 'w', `Найдено в стоке: ${results.length} совпадений`);
+
+  if (!results.length) {
+    document.getElementById('scanContent').innerHTML = `
+      <div style="color:#ff9800;font-size:12px;padding:14px;background:#1a1200;border-radius:5px">
+        <b>Совпадений не найдено.</b><br>
+        Попробуйте загрузить оба файла и использовать "Найти КС через сравнение".
+      </div>`;
+    return;
+  }
+
+  // Sort: results needing a fix first (most useful), then by csSize descending
+  results.sort((a, b) => {
+    if (a.modNeedsfix !== b.modNeedsfix) return a.modNeedsfix ? -1 : 1;
+    return b.csSize - a.csSize;
+  });
+
+  const hasMod = !!modData;
+  let html = `<div style="color:#4caf82;font-size:12px;margin-bottom:8px">Найдено совпадений: ${results.length}${hasMod ? ' — показан статус изменённого файла' : ''}</div>`;
+
+  const modCols = hasMod ? '<th>КС в изм. файле</th><th>Нужна</th><th>Статус изм.</th>' : '';
+  html += `<table class="scan-table"><thead><tr>
+    <th>Алгоритм</th><th>КС смещение</th><th>Диапазон</th><th>КС в стоке</th>${modCols}<th></th>
+  </tr></thead><tbody>`;
+
+  for (const r of results) {
+    let modCells = '';
+    if (hasMod) {
+      const stored = r.modStored !== null ? '0x'+toHex(r.modStored, r.csSize) : '?';
+      const correct = r.modCorrect !== null ? '0x'+toHex(r.modCorrect, r.csSize) : '?';
+      const needFix = r.modNeedsfix;
+      modCells = `
+        <td class="${needFix?'c-warn':'c-ok'}">${stored}</td>
+        <td class="${needFix?'c-warn':'c-ok'}">${correct}</td>
+        <td>${needFix ? '<span style="color:#f44336">✘ Неверная</span>' : '<span style="color:#4caf82">✔ Верная</span>'}</td>`;
+    }
+    html += `<tr onclick="applyStockResult(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+      <td class="c-ok">${r.label}</td>
+      <td class="c-ok">0x${r.csOff.toString(16).toUpperCase().padStart(4,'0')}</td>
+      <td style="font-size:10px;color:#666">0x${r.rangeStart.toString(16).toUpperCase()}–0x${r.rangeEnd.toString(16).toUpperCase()}</td>
+      <td class="c-ok">0x${toHex(r.value, r.csSize)}</td>
+      ${modCells}
+      <td style="color:#7ec8e3">→ Применить</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  html += `<div style="font-size:10px;color:#444;margin-top:5px">Нажмите строку для применения параметров</div>`;
+  document.getElementById('scanContent').innerHTML = html;
+}
+
+function applyStockResult(r) {
+  if (typeof r === 'string') r = JSON.parse(r);
+  document.getElementById('algorithm').value = r.algo;
+  document.getElementById('startOffset').value = '0x' + r.rangeStart.toString(16).toUpperCase();
+  document.getElementById('endOffset').value = r.rangeEnd === stockData.length ? 'auto' :
+    '0x' + r.rangeEnd.toString(16).toUpperCase();
+  document.getElementById('csOffset').value = '0x' + r.csOff.toString(16).toUpperCase().padStart(4,'0');
+  document.getElementById('excludeCs').value = r.excludeCs ? 'yes' : 'no';
+  addLog('o', `Параметры из стока применены: ${r.label}, КС@0x${r.csOff.toString(16).toUpperCase()}`);
+  if (modData) {
+    document.getElementById('btnFix').disabled = false;
+    if (r.modNeedsfix) {
+      addLog('w', `КС в изменённом файле НЕВЕРНАЯ → нажмите "Исправить КС"`);
+    } else if (r.modStored !== null) {
+      addLog('o', `КС в изменённом файле уже верная`);
+    } else {
+      addLog('w', `Нажмите "Рассчитать КС" для проверки изменённого файла`);
+    }
+  }
+  switchTab('hex');
+  activeData = modData || stockData;
+  renderHex(0, r.rangeStart, r.rangeEnd, r.csOff, r.csSize);
+}
+
+// ============================================================
+// MANUAL SCAN
+// ============================================================
+async function manualScan() {
+  const data = modData || stockData;
+  if (!data) return;
+  switchTab('scan');
+  addLog('i', '=== Поиск КС в файле ===');
+  setProgress(0, true);
+
+  const ALGOS = ['sum32_le','sum32_be','neg_sum32_le','neg_sum32_be','sum16_le','sum16_be','sum8','neg_sum8','crc32','crc16ccitt','xor32_le','xor8'];
+  const fileLen = data.length;
+  const results = [];
+  let tested = 0;
+
+  for (const algo of ALGOS) {
+    const csSize = getAlgoSize(algo);
+    const isBE = isBigEndian(algo);
+    const res = computeCs(data, 0, fileLen, algo, -1, false);
+    if (!res) continue;
+
+    for (let csOff = 0; csOff + csSize <= Math.min(fileLen, 256*1024); csOff += csSize) {
+      tested++;
+      if (tested % 10000 === 0) { setProgress(Math.round(csOff / fileLen * 100), true); await tick(); }
+
+      const stored = readVal(data, csOff, csSize, isBE);
+      if (stored === res.value) {
+        results.push({ algo, csOff, csSize, rangeStart:0, rangeEnd:fileLen, value:stored, isBE, excludeCs:false, label:ALGO_LABELS[algo] });
+        continue;
+      }
+      const res2 = computeCs(data, 0, fileLen, algo, csOff, true);
+      if (res2 && readVal(data, csOff, csSize, isBE) === res2.value) {
+        results.push({ algo, csOff, csSize, rangeStart:0, rangeEnd:fileLen, value:res2.value, isBE, excludeCs:true, label:ALGO_LABELS[algo] });
+      }
+    }
+  }
+
+  setProgress(100, true);
+  setTimeout(() => setProgress(0, false), 500);
+  addLog(results.length ? 'o' : 'w', `Найдено: ${results.length}`);
+
+  if (!results.length) {
+    document.getElementById('scanContent').innerHTML = '<div style="color:#888;font-size:12px;padding:16px;text-align:center">Совпадений не найдено</div>';
+    return;
+  }
+
+  let html = `<table class="scan-table"><thead><tr><th>Алгоритм</th><th>Смещение КС</th><th>Значение</th><th>Excl.CS</th><th></th></tr></thead><tbody>`;
+  for (const r of results) {
+    html += `<tr onclick="applyStockResult(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+      <td class="c-ok">${r.label}</td>
+      <td class="c-ok">0x${r.csOff.toString(16).toUpperCase().padStart(4,'0')}</td>
+      <td class="c-ok">0x${toHex(r.value, r.csSize)}</td>
+      <td>${r.excludeCs?'да':'нет'}</td>
+      <td style="color:#7ec8e3">→</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('scanContent').innerHTML = html;
+}
+
+// ============================================================
+// CALCULATE
+// ============================================================
+function calculate() {
+  const data = modData || stockData;
+  if (!data) return;
+  activeData = data;
+
+  const algo = document.getElementById('algorithm').value;
+  const start = parseOff(document.getElementById('startOffset').value) || 0;
+  let end = parseOff(document.getElementById('endOffset').value);
+  if (end === null) end = data.length;
+  const csOff = parseOff(document.getElementById('csOffset').value) || 0;
+  const excl = document.getElementById('excludeCs').value === 'yes';
+  const csSize = getAlgoSize(algo);
+  const isBE = isBigEndian(algo);
+
+  const res = computeCs(data, start, end, algo, excl ? csOff : -1, excl);
+  if (!res) return;
+
+  const stored = readVal(data, csOff, csSize, isBE);
+  const match = stored !== null && res.value === stored;
+
+  document.getElementById('rCalc').textContent = '0x' + toHex(res.value, csSize);
+  document.getElementById('rCalcD').textContent = `${res.value >>> 0} dec`;
+  document.getElementById('rStored').textContent = stored !== null ? '0x'+toHex(stored, csSize) : '—';
+  document.getElementById('rStoredD').textContent = stored !== null ? `@ 0x${csOff.toString(16).toUpperCase()}` : '';
+  document.getElementById('rRange').textContent = `0x${start.toString(16).toUpperCase()}…0x${end.toString(16).toUpperCase()}`;
+  document.getElementById('rRangeD').textContent = `${end - start} байт`;
+
+  const sb = document.getElementById('rStatus');
+  if (stored === null) sb.innerHTML = '<span class="status-badge s-na">⚠ Нет данных</span>';
+  else if (match) { sb.innerHTML = '<span class="status-badge s-ok">✔ ВЕРНО</span>'; addLog('o', `КС верна: 0x${toHex(res.value, csSize)}`); }
+  else { sb.innerHTML = '<span class="status-badge s-err">✘ НЕВЕРНО</span>'; addLog('w', `КС неверна. Вычислено: 0x${toHex(res.value,csSize)}, в файле: 0x${stored!==null?toHex(stored,csSize):'?'}`); }
+
+  document.getElementById('btnFix').disabled = match;
+  renderHex(Math.max(0, start - 16), start, end, csOff, csSize);
+}
+
+// ============================================================
+// FIX & SAVE
+// ============================================================
+function fixChecksum() {
+  const data = modData || stockData;
+  if (!data) return;
+
+  const algo   = document.getElementById('algorithm').value;
+  const start  = parseOff(document.getElementById('startOffset').value) || 0;
+  let   end    = parseOff(document.getElementById('endOffset').value);
+  if (end === null) end = data.length;
+  const csOff  = parseOff(document.getElementById('csOffset').value) || 0;
+  const csSize = getAlgoSize(algo);
+  const isBE   = isBigEndian(algo);
+
+  if (csOff + csSize > data.length) {
+    addLog('e', `Смещение КС 0x${csOff.toString(16).toUpperCase()} выходит за пределы файла`);
+    return;
+  }
+
+  // Значение ДО исправления
+  const oldVal = readVal(data, csOff, csSize, isBE);
+
+  const res = computeCs(data, start, end, algo, csOff, true);
+  if (!res) {
+    addLog('e', `Ошибка расчёта: диапазон [0x${start.toString(16).toUpperCase()}–0x${end.toString(16).toUpperCase()}] некорректен`);
+    return;
+  }
+
+  // Записываем напрямую в байты массива (обходим DataView)
+  const newBytes = valToBytes(res.value, csSize, isBE);
+  for (let i = 0; i < csSize; i++) data[csOff + i] = newBytes[i];
+
+  // Читаем обратно для проверки
+  const verify = readVal(data, csOff, csSize, isBE);
+  if (verify !== res.value) {
+    addLog('e', `Ошибка записи: ожидали 0x${toHex(res.value,csSize)}, прочитали 0x${toHex(verify,csSize)}`);
+    return;
+  }
+
+  addLog('o', `КС исправлена: 0x${toHex(oldVal,csSize)} → 0x${toHex(res.value,csSize)} (@ 0x${csOff.toString(16).toUpperCase()})`);
+  addLog('o', `Диапазон расчёта: [0x${start.toString(16).toUpperCase()} – 0x${end.toString(16).toUpperCase()}]`);
+
+  document.getElementById('btnSave').style.display = 'block';
+  document.getElementById('btnSave').disabled = false;
+  calculate();
+}
+
+// Число → байты (для надёжной записи без DataView)
+function valToBytes(val, size, isBE) {
+  const b = new Uint8Array(size);
+  if (size === 1) { b[0] = val & 0xFF; return b; }
+  if (size === 2) {
+    if (isBE) { b[0]=(val>>8)&0xFF; b[1]=val&0xFF; }
+    else       { b[0]=val&0xFF; b[1]=(val>>8)&0xFF; }
+    return b;
+  }
+  // size === 4
+  const v = val >>> 0;
+  if (isBE) {
+    b[0]=(v>>>24)&0xFF; b[1]=(v>>>16)&0xFF; b[2]=(v>>>8)&0xFF; b[3]=v&0xFF;
+  } else {
+    b[0]=v&0xFF; b[1]=(v>>>8)&0xFF; b[2]=(v>>>16)&0xFF; b[3]=(v>>>24)&0xFF;
+  }
+  return b;
+}
+
+function saveFile() {
+  const data = modData || stockData;
+  if (!data) return;
+
+  // Явная копия буфера — гарантируем что Blob содержит актуальные данные
+  const copy = new Uint8Array(data.length);
+  copy.set(data);
+
+  const blob = new Blob([copy], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = (modName || stockName).replace(/\.[^.]+$/, '') + '_cs_ok.bin';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  addLog('o', `Файл сохранён: ${a.download} (${fmtSize(copy.length)})`);
+}
+
+// ============================================================
+// CHECKSUM ALGORITHMS
+// ============================================================
+const ALGO_LABELS = {
+  'sum32_le':'SUM32 LE','sum32_be':'SUM32 BE',
+  'neg_sum32_le':'NEG SUM32 LE','neg_sum32_be':'NEG SUM32 BE',
+  'sum16_le':'SUM16 LE','sum16_be':'SUM16 BE',
+  'sum8':'SUM8','neg_sum8':'NEG SUM8',
+  'crc32':'CRC32','crc16ccitt':'CRC16-CCITT','xor32_le':'XOR32 LE','xor8':'XOR8'
+};
+
+function getAlgoSize(a) {
+  if (['sum8','neg_sum8','xor8'].includes(a)) return 1;
+  if (['sum16_le','sum16_be','crc16','crc16ccitt'].includes(a)) return 2;
+  return 4;
+}
+function isBigEndian(a) { return a.endsWith('_be') || a==='crc16' || a==='crc16ccitt' || a==='crc32'; }
+
+function computeCs(data, start, end, algo, csOff, zeroCs) {
+  if (start < 0 || end > data.length || start >= end) return null;
+
+  // Use subarray (zero-copy view) unless we need to zero the CS field
+  let slice;
+  const needsZero = zeroCs && csOff >= start && csOff < end;
+  if (needsZero) {
+    slice = data.slice(start, end); // copy only when modification needed
+    const csSize = getAlgoSize(algo);
+    const rel = csOff - start;
+    for (let i = rel; i < rel + csSize && i < slice.length; i++) slice[i] = 0;
+  } else {
+    slice = data.subarray(start, end); // zero-copy
+  }
+
+  switch (algo) {
+    case 'sum8':  { let s=0; for (let b of slice) s=(s+b)&0xFF; return {value:s,size:1}; }
+    case 'neg_sum8': { let s=0; for (let b of slice) s=(s+b)&0xFF; return {value:(0x100-s)&0xFF,size:1}; }
+    case 'xor8':  { let x=0; for (let b of slice) x^=b; return {value:x,size:1}; }
+    case 'sum16_le': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+1<slice.length;i+=2) s=(s+dv.getUint16(i,true))&0xFFFF; return {value:s,size:2}; }
+    case 'sum16_be': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+1<slice.length;i+=2) s=(s+dv.getUint16(i,false))&0xFFFF; return {value:s,size:2}; }
+    case 'crc16ccitt': return {value:crc16(slice,0x1021,0xFFFF,false,false,0),size:2};
+    case 'crc16':     return {value:crc16(slice,0x8005,0,false,false,0),size:2};
+    case 'sum32_le': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+3<slice.length;i+=4) s=(s+dv.getUint32(i,true))>>>0; return {value:s,size:4}; }
+    case 'sum32_be': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+3<slice.length;i+=4) s=(s+dv.getUint32(i,false))>>>0; return {value:s,size:4}; }
+    case 'neg_sum32_le': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+3<slice.length;i+=4) s=(s+dv.getUint32(i,true))>>>0; return {value:(0x100000000-s)>>>0,size:4}; }
+    case 'neg_sum32_be': { let s=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+3<slice.length;i+=4) s=(s+dv.getUint32(i,false))>>>0; return {value:(0x100000000-s)>>>0,size:4}; }
+    case 'xor32_le': { let x=0; const dv=new DataView(slice.buffer,slice.byteOffset,slice.byteLength); for(let i=0;i+3<slice.length;i+=4) x^=dv.getUint32(i,true); return {value:x>>>0,size:4}; }
+    case 'crc32': return {value:crc32(slice),size:4};
+    default: return null;
+  }
+}
+
+function crc16(data, poly, init, refIn, refOut, xorOut) {
+  let crc = init;
+  for (let b of data) {
+    crc ^= (b << 8);
+    for (let i=0;i<8;i++) crc = (crc&0x8000) ? ((crc<<1)^poly)&0xFFFF : (crc<<1)&0xFFFF;
+  }
+  return (crc ^ xorOut) & 0xFFFF;
+}
+const CRC32T = (() => { const t=new Uint32Array(256); for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c;} return t; })();
+function crc32(data) { let c=0xFFFFFFFF; for(let b of data) c=CRC32T[(c^b)&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+
+function readVal(data, off, size, isBE) {
+  if (off + size > data.length) return null;
+  const dv = new DataView(data.buffer, data.byteOffset + off, size);
+  if (size===1) return dv.getUint8(0);
+  if (size===2) return dv.getUint16(0, !isBE);
+  return dv.getUint32(0, !isBE);
+}
+
+function writeVal(data, off, val, size, isBE) {
+  const dv = new DataView(data.buffer, data.byteOffset + off, size);
+  if (size===1) dv.setUint8(0, val);
+  else if (size===2) dv.setUint16(0, val, !isBE);
+  else dv.setUint32(0, val, !isBE);
+}
+
+// ============================================================
+// HEX VIEWER
+// ============================================================
+function renderHex(scrollTo=0, hlStart=-1, hlEnd=-1, csOff=-1, csSize=4) {
+  const data = activeData || modData || stockData;
+  if (!data) return;
+
+  // Use cached diff set (updated in checkBothLoaded)
+  let diffSet = null;
+  if (stockData && modData && data === modData) {
+    diffSet = cachedDiffSet;
+  }
+
+  const BPR = 16, ROWS = 200;
+  let base = Math.max(0, Math.floor(scrollTo/BPR)*BPR);
+  let html = '';
+
+  for (let r=0; r<ROWS; r++) {
+    const addr = base + r*BPR;
+    if (addr >= data.length) break;
+    let bytes='', ascii='';
+    for (let i=0;i<BPR;i++) {
+      const idx = addr+i;
+      if (i < data.length - addr) {
+        const b = data[idx];
+        const hs = b.toString(16).padStart(2,'0').toUpperCase();
+        const ch = b>=32&&b<127?String.fromCharCode(b):'.';
+        const inCs = csOff>=0 && idx>=csOff && idx<csOff+csSize;
+        const inHl = hlStart>=0 && idx>=hlStart && idx<hlEnd;
+        const isDiff = diffSet && diffSet.has(idx);
+        const cls = inCs ? 'hl2' : (isDiff ? 'hl3' : (inHl ? 'hl' : ''));
+        bytes += cls ? `<span class="${cls}">${hs}</span> ` : `${hs} `;
+        ascii += cls ? `<span class="${cls}">${ch}</span>` : ch;
+      } else { bytes+='   '; ascii+=' '; }
+      if (i===7) bytes+=' ';
+    }
+    html += `<div class="hex-row">
+      <span class="hex-addr">${addr.toString(16).toUpperCase().padStart(8,'0')}:</span>
+      <span class="hex-bytes">${bytes}</span>
+      <span class="hex-ascii">${ascii}</span>
+    </div>`;
+  }
+  if (data.length > base + ROWS*BPR)
+    html += `<div style="color:#333;font-size:10px;padding:6px;text-align:center">... ещё ${fmtSize(data.length-base-ROWS*BPR)}</div>`;
+
+  document.getElementById('hexViewer').innerHTML = html || '<div style="color:#333;padding:20px;text-align:center">Нет данных</div>';
+}
+
+function hexGoto() {
+  const off = parseOff(document.getElementById('hexGotoAddr').value);
+  if (off !== null) renderHex(off);
+}
+
+// ============================================================
+// DIFF TABLE
+// ============================================================
+function renderDiffTable(regions) {
+  if (!regions.length) { document.getElementById('diffContent').innerHTML='<div style="color:#4caf82;padding:10px">Файлы идентичны</div>'; return; }
+  let html = `<div style="font-size:11px;color:#666;margin-bottom:8px">Регионы различий (${regions.length}):</div>`;
+  html += `<table class="scan-table"><thead><tr><th>#</th><th>Начало</th><th>Конец</th><th>Размер</th><th></th></tr></thead><tbody>`;
+  regions.slice(0,50).forEach((r,i) => {
+    html += `<tr onclick="renderHex(${r.start})">
+      <td style="color:#555">${i+1}</td>
+      <td class="c-blue">0x${r.start.toString(16).toUpperCase().padStart(4,'0')}</td>
+      <td class="c-blue">0x${(r.end-1).toString(16).toUpperCase().padStart(4,'0')}</td>
+      <td style="color:#888">${r.end-r.start} байт</td>
+      <td style="color:#555;font-size:10px">→ hex</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('diffContent').innerHTML = html;
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function parseOff(s) {
+  if (!s||s.toLowerCase()==='auto') return null;
+  s=s.trim().replace(/\s/g,'').toLowerCase();
+  if (s.startsWith('0x')) return parseInt(s,16);
+  if (/^[0-9a-f]+$/.test(s)) return parseInt(s,16);
+  return parseInt(s,10)||null;
+}
+function toHex(v,b) { return (v>>>0).toString(16).toUpperCase().padStart(b*2,'0'); }
+function fmtSize(n) { return n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB'; }
+function tick() { return new Promise(r=>setTimeout(r,0)); }
+function setProgress(pct, show) {
+  document.getElementById('progressBar').style.display = show ? 'block' : 'none';
+  document.getElementById('progressInner').style.width = pct + '%';
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['hex','diff','scan','log','info'][i]===id));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+id));
+}
+
+function addLog(type, msg) {
+  const log = document.getElementById('logArea');
+  const now = new Date().toTimeString().slice(0,8);
+  const cls = {i:'li',o:'lo',w:'lw',e:'le'}[type]||'li';
+  const tag = {i:'INFO',o:' OK ',w:'WARN',e:'ERR '}[type]||'INFO';
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = `[${now}][${tag}] ${msg}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+// Init
+applyPreset();
+updateEnableButtons();
+</script>
+</body>
+</html>
