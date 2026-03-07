@@ -93,7 +93,7 @@
 <body>
 
 <div class="header">
-  <h1>ECU Checksum Tool <span class="badge">v3.1</span></h1>
+  <h1>ECU Checksum Tool <span class="badge">v3.2</span></h1>
   <p>Расчёт и исправление контрольных сумм прошивок ЭБУ Cummins / Bosch (.bin)</p>
 </div>
 
@@ -309,7 +309,7 @@
     <!-- LOG -->
     <div class="tab-content" id="tab-log">
       <div class="log" id="logArea">
-        <div class="li">[INFO] ECU Checksum Tool v3.1</div>
+        <div class="li">[INFO] ECU Checksum Tool v3.2</div>
         <div class="li">[INFO] Загрузите сток (шаг 1) и изменённый файл (шаг 2)</div>
         <div class="li">[INFO] Нажмите "Найти КС через сравнение файлов"</div>
       </div>
@@ -672,7 +672,7 @@ async function scanDescriptorTable() {
   const scanEnd = Math.min(0x8000, fileLen - 12);
 
   for (let i = 0; i <= scanEnd; i += 4) {
-    if (i % 0x200 === 0) { setProgress(Math.round(i / scanEnd * 60), true); await tick(); }
+    if (i % 0x2000 === 0) { setProgress(Math.round(i / scanEnd * 60), true); await tick(); }
 
     for (const base of MEM_BASES) {
       // Try both LE and BE address encoding in the descriptor itself
@@ -749,7 +749,7 @@ async function scanDescriptorTable() {
                          'crc32', 'neg_sum32_be', 'sum32_be', 'neg_sum16_be', 'sum16_be'];
 
   for (let i = tailSearchStart; i <= fileLen - 8; i += 4) {
-    if ((i - tailSearchStart) % 0x400 === 0) {
+    if ((i - tailSearchStart) % 0x4000 === 0) {
       setProgress(60 + Math.round((i - tailSearchStart) / Math.max(1, fileLen - tailSearchStart) * 35), true);
       await tick();
     }
@@ -967,7 +967,7 @@ function applyFoundParams(r) {
 // Returns null for crc32/crc16 (caller falls back to computeCs)
 // ============================================================
 class CsAccumulator {
-  constructor(data) {
+  constructor(data, {skipByte = false} = {}) {
     const n  = data.length;
     const n4 = n >> 2;
     const n2 = n >> 1;
@@ -979,8 +979,9 @@ class CsAccumulator {
     const x32le = new Uint32Array(n4 + 1);
     const s16le = new Float64Array(n2 + 1);
     const s16be = new Float64Array(n2 + 1);
-    const s8    = new Float64Array(n  + 1);
-    const x8    = new Uint8Array(n  + 1);
+    // 8-bit arrays: skip for large files (>64KB) — 8-bit algos are excluded there anyway
+    const s8 = skipByte ? null : new Float64Array(n + 1);
+    const x8 = skipByte ? null : new Uint8Array(n + 1);
 
     for (let i = 0; i < n4; i++) {
       const le = dv.getUint32(i * 4, true);
@@ -993,9 +994,11 @@ class CsAccumulator {
       s16le[i+1] = s16le[i] + dv.getUint16(i * 2, true);
       s16be[i+1] = s16be[i] + dv.getUint16(i * 2, false);
     }
-    for (let i = 0; i < n; i++) {
-      s8[i+1] = s8[i] + data[i];
-      x8[i+1] = x8[i] ^ data[i];
+    if (!skipByte) {
+      for (let i = 0; i < n; i++) {
+        s8[i+1] = s8[i] + data[i];
+        x8[i+1] = x8[i] ^ data[i];
+      }
     }
 
     this._dv   = dv;
@@ -1065,16 +1068,19 @@ class CsAccumulator {
         return ((0x10000 - v) & 0xFFFF) >>> 0;
       }
       case 'sum8': {
+        if (!this._s8) return null;
         let v = this._s8[e] - this._s8[s];
         if (csOff >= s && csOff + 1 <= e) v -= data[csOff];
         return (v & 0xFF) >>> 0;
       }
       case 'neg_sum8': {
+        if (!this._s8) return null;
         let v = this._s8[e] - this._s8[s];
         if (csOff >= s && csOff + 1 <= e) v -= data[csOff];
         return ((-v) & 0xFF) >>> 0;
       }
       case 'xor8': {
+        if (!this._x8) return null;
         let v = this._x8[e] ^ this._x8[s];
         if (csOff >= s && csOff + 1 <= e) v ^= data[csOff];
         return (v & 0xFF) >>> 0;
@@ -1085,7 +1091,7 @@ class CsAccumulator {
 }
 
 // ============================================================
-// STOCK SCAN  v3.1 — O(1) prefix-sum approach (~100× faster)
+// STOCK SCAN  v3.2 — O(1) prefix-sum approach (~100× faster)
 // ============================================================
 async function stockScan() {
   if (!stockData) { addLog('e', 'Загрузите сток-файл'); return; }
@@ -1100,8 +1106,8 @@ async function stockScan() {
   // ── Build O(n) prefix-sum accumulators ────────────────────────────────
   addLog('i', 'Инициализация...');
   await tick();
-  const acc    = new CsAccumulator(stockData);
-  const accMod = modData ? new CsAccumulator(modData) : null;
+  const acc    = new CsAccumulator(stockData, {skipByte: isLargeFile});
+  const accMod = modData ? new CsAccumulator(modData, {skipByte: isLargeFile}) : null;
   setProgress(5, true);
   await tick();
 
@@ -1198,13 +1204,19 @@ async function stockScan() {
   const seen    = new Set();
 
   for (let off = 0; off + 2 <= scanEnd; off += 2) {
-    if ((off & 0xFFF) === 0) { setProgress(50 + Math.round(off/scanEnd*48), true); await tick(); }
+    // Yield every 32KB — 32 ticks for 2MB file (vs 512 at 4KB) to reduce setTimeout overhead
+    if ((off & 0x7FFF) === 0) { setProgress(50 + Math.round(off/scanEnd*48), true); await tick(); }
 
     const aligned4 = !(off & 3);
     const v32le = aligned4 && off+4 <= fileLen ? dv.getUint32(off, true)  : -1;
     const v32be = aligned4 && off+4 <= fileLen ? dv.getUint32(off, false) : -1;
     const v16le = off+2 <= fileLen ? dv.getUint16(off, true)  : -1;
     const v16be = off+2 <= fileLen ? dv.getUint16(off, false) : -1;
+
+    // Fast skip: 0x0000 and 0xFFFF are never valid ECU checksums (unprogrammed flash / BSS)
+    if ((v16le === 0 || v16le === 0xFFFF) && (v16be === 0 || v16be === 0xFFFF)) {
+      if (!aligned4 || v32le === 0 || v32le === 0xFFFFFFFF) continue;
+    }
 
     const checks = [
       [dict32le, v32le, 4, false],
