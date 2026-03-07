@@ -93,7 +93,7 @@
 <body>
 
 <div class="header">
-  <h1>ECU Checksum Tool <span class="badge">v3.0</span></h1>
+  <h1>ECU Checksum Tool <span class="badge">v3.1</span></h1>
   <p>Расчёт и исправление контрольных сумм прошивок ЭБУ Cummins / Bosch (.bin)</p>
 </div>
 
@@ -309,7 +309,7 @@
     <!-- LOG -->
     <div class="tab-content" id="tab-log">
       <div class="log" id="logArea">
-        <div class="li">[INFO] ECU Checksum Tool v3.0</div>
+        <div class="li">[INFO] ECU Checksum Tool v3.1</div>
         <div class="li">[INFO] Загрузите сток (шаг 1) и изменённый файл (шаг 2)</div>
         <div class="li">[INFO] Нажмите "Найти КС через сравнение файлов"</div>
       </div>
@@ -660,7 +660,8 @@ async function scanDescriptorTable() {
   // Tricore memory bases: TC1782/TC1793 flash at 0x80000000 or 0xA0000000
   // Also try 0xC0000000 and 0x00800000 used by some Bosch variants
   const MEM_BASES = [0x80000000, 0xA0000000, 0xA8000000, 0xC0000000, 0x00800000, 0x00000000];
-  const ALGOS = ['sum32_le','neg_sum32_le','crc32','sum32_be','neg_sum32_be'];
+  const ALGOS = ['neg_sum16_le','sum16_le','neg_sum16_be','sum16_be',
+                 'sum32_le','neg_sum32_le','crc32','sum32_be','neg_sum32_be'];
   // Allow smaller min range (some blocks are 64KB)
   const MIN_RANGE = Math.max(0x1000, Math.round(fileLen * 0.02));
 
@@ -685,9 +686,11 @@ async function scanDescriptorTable() {
 
         for (let b = 0; b < nBlocks; b++) {
           const o = i + b * 12;
-          const sAddr = dv.getUint32(o,     addrLE);
-          const eAddr = dv.getUint32(o + 4, addrLE);
-          const stoCs = dv.getUint32(o + 8, true); // stored CS always LE
+          const sAddr     = dv.getUint32(o,     addrLE);
+          const eAddr     = dv.getUint32(o + 4, addrLE);
+          const stoCs     = dv.getUint32(o + 8, true);   // 32-bit LE
+          const stoCs16le = dv.getUint16(o + 8, true);   // 16-bit LE
+          const stoCs16be = dv.getUint16(o + 8, false);  // 16-bit BE
 
           const sOff = base === 0 ? sAddr : (sAddr - base);
           const eOff = base === 0 ? eAddr : (eAddr - base);
@@ -699,7 +702,7 @@ async function scanDescriptorTable() {
           // Reject implausible values (all-zero, all-FF)
           if (stoCs === 0x00000000 && sAddr === 0 && eAddr === 0) { ok = false; break; }
 
-          blocks.push({ sOff, eOff, stoCs, descCsOff: o + 8 });
+          blocks.push({ sOff, eOff, stoCs, stoCs16le, stoCs16be, descCsOff: o + 8 });
         }
         if (!ok || blocks.length === 0) continue;
 
@@ -713,7 +716,8 @@ async function scanDescriptorTable() {
           for (const blk of blocks) {
             const csInRange = blk.descCsOff >= blk.sOff && blk.descCsOff + csSize <= blk.eOff;
             const r = computeCs(stockData, blk.sOff, blk.eOff, algo, blk.descCsOff, csInRange);
-            if (r && r.value === blk.stoCs) {
+            const expectedCs = csSize === 4 ? blk.stoCs : (isBE ? blk.stoCs16be : blk.stoCs16le);
+            if (r && r.value === expectedCs) {
               matched.push({ ...blk, algo, csInRange, isBE });
             } else {
               allOk = false; break;
@@ -741,7 +745,8 @@ async function scanDescriptorTable() {
   const EDC17_MAGIC = new Set([0x87654321, 0x12345678]);
   const tailSearchStart = Math.max(0, fileLen - 0x10000); // last 64KB
   const EDC17_BASES   = [0x80000000, 0xA0000000];
-  const EDC17_ALGOS   = ['neg_sum32_le', 'sum32_le', 'crc32', 'neg_sum32_be', 'sum32_be'];
+  const EDC17_ALGOS   = ['neg_sum16_le', 'sum16_le', 'neg_sum32_le', 'sum32_le',
+                         'crc32', 'neg_sum32_be', 'sum32_be', 'neg_sum16_be', 'sum16_be'];
 
   for (let i = tailSearchStart; i <= fileLen - 8; i += 4) {
     if ((i - tailSearchStart) % 0x400 === 0) {
@@ -762,16 +767,18 @@ async function scanDescriptorTable() {
         let ok2 = true;
         for (let b = 0; b < nBlocks; b++) {
           const o = tableOff + b * 12;
-          const sAddr = dv.getUint32(o,     true);
-          const eAddr = dv.getUint32(o + 4, true);
-          const stoCs = dv.getUint32(o + 8, true);
+          const sAddr      = dv.getUint32(o,     true);
+          const eAddr      = dv.getUint32(o + 4, true);
+          const stoCs      = dv.getUint32(o + 8, true);
+          const stoCs16le  = dv.getUint16(o + 8, true);
+          const stoCs16be  = dv.getUint16(o + 8, false);
           const sOff  = sAddr - base;
           const eOff  = eAddr - base;
           if (sOff < 0 || sOff >= fileLen)   { ok2 = false; break; }
           if (eOff <= sOff || eOff > fileLen) { ok2 = false; break; }
           if (eOff - sOff < MIN_RANGE)        { ok2 = false; break; }
           if (sAddr === 0 && eAddr === 0 && stoCs === 0) { ok2 = false; break; }
-          blocks2.push({ sOff, eOff, stoCs, descCsOff: o + 8 });
+          blocks2.push({ sOff, eOff, stoCs, stoCs16le, stoCs16be, descCsOff: o + 8 });
         }
         if (!ok2 || blocks2.length === 0) continue;
 
@@ -783,7 +790,8 @@ async function scanDescriptorTable() {
           for (const blk of blocks2) {
             const csInRange = blk.descCsOff >= blk.sOff && blk.descCsOff + csSize <= blk.eOff;
             const r = computeCs(stockData, blk.sOff, blk.eOff, algo, blk.descCsOff, csInRange);
-            if (r && r.value === blk.stoCs) {
+            const expectedCs2 = csSize === 4 ? blk.stoCs : (isBE ? blk.stoCs16be : blk.stoCs16le);
+            if (r && r.value === expectedCs2) {
               matched2.push({ ...blk, algo, csInRange, isBE });
             } else { allOk2 = false; break; }
           }
@@ -1077,7 +1085,7 @@ class CsAccumulator {
 }
 
 // ============================================================
-// STOCK SCAN  v3.0 — O(1) prefix-sum approach (~100× faster)
+// STOCK SCAN  v3.1 — O(1) prefix-sum approach (~100× faster)
 // ============================================================
 async function stockScan() {
   if (!stockData) { addLog('e', 'Загрузите сток-файл'); return; }
@@ -1110,6 +1118,18 @@ async function stockScan() {
     if (s > 0 && fileLen-s > s)    rangeSet.add(`${s}:${fileLen-s}`);
   }
   for (let b = 0x1000; b < fileLen; b += 0x1000) {
+    rangeSet.add(`0:${b}`);
+    rangeSet.add(`${b}:${fileLen}`);
+  }
+  // Dense tail ranges — CS at end of file (EDC17CV44: last 4 bytes = 0x7FBFC/0x7FBFE)
+  // Last 2KB at 2-byte granularity; last 64KB at 256-byte granularity
+  const _tailDense = Math.max(0, fileLen - 0x800);
+  for (let b = _tailDense; b < fileLen; b += 2) {
+    rangeSet.add(`0:${b}`);
+    rangeSet.add(`${b}:${fileLen}`);
+  }
+  const _tailMed = Math.max(0, fileLen - 0x10000);
+  for (let b = _tailMed; b < _tailDense; b += 0x100) {
     rangeSet.add(`0:${b}`);
     rangeSet.add(`${b}:${fileLen}`);
   }
@@ -1166,21 +1186,23 @@ async function stockScan() {
   }
 
   setProgress(50, true);
-  addLog('i', `Фаза 1 готова. Сканирую заголовок файла...`);
+  addLog('i', `Фаза 1 готова. Сканирую файл...`);
   await tick();
 
-  // ── Phase 2: scan first 64 KB for CS field offset ─────────────────────
-  // CS fields are always in the firmware header, never in data area.
-  // Scanning first 64 KB covers all known Cummins/Bosch ECU layouts.
-  const scanEnd = Math.min(fileLen, 0x10000);
+  // ── Phase 2: scan entire file for CS field offset ─────────────────────
+  // EDC17CV44: checksums at 0x7FBFC/0x7FBFE (last 4 bytes of 512KB file).
+  // Step 2 to catch 2-byte-aligned offsets (0x7FBFE mod 4 = 2 → missed at step 4).
+  // 32-bit lookups only at 4-byte-aligned positions to avoid false positives.
+  const scanEnd = fileLen;
   const dv      = new DataView(stockData.buffer, stockData.byteOffset, stockData.byteLength);
   const seen    = new Set();
 
-  for (let off = 0; off + 2 <= scanEnd; off += 4) {
+  for (let off = 0; off + 2 <= scanEnd; off += 2) {
     if ((off & 0xFFF) === 0) { setProgress(50 + Math.round(off/scanEnd*48), true); await tick(); }
 
-    const v32le = off+4 <= fileLen ? dv.getUint32(off, true)  : -1;
-    const v32be = off+4 <= fileLen ? dv.getUint32(off, false) : -1;
+    const aligned4 = !(off & 3);
+    const v32le = aligned4 && off+4 <= fileLen ? dv.getUint32(off, true)  : -1;
+    const v32be = aligned4 && off+4 <= fileLen ? dv.getUint32(off, false) : -1;
     const v16le = off+2 <= fileLen ? dv.getUint16(off, true)  : -1;
     const v16be = off+2 <= fileLen ? dv.getUint16(off, false) : -1;
 
